@@ -34,16 +34,37 @@ async def play(interaction: nextcord.Interaction, search):
 
     if vc.queue.is_empty and not vc.is_playing():
         await vc.play(query)
-        await interaction.response.send_message(f"Escuchando: {vc.current.title}")
+        await interaction.response.send_message(f"Escuchando: {vc.current.title} - {vc.current.author}")
     else:
         await vc.queue.put_wait(query)
-        await interaction.response.send_message(f"Cancion agregada a la lista")
+        await interaction.response.send_message(f"Escuchando: {vc.current.title} - {vc.current.author}")
 
 @bot.slash_command(guild_ids=[])
 async def skip(interaction: nextcord.Interaction):
     vc: wavelink.Player = interaction.guild.voice_client
     await vc.stop()
-    await interaction.response.send_message(f"La cancion se jue")
+
+    if not vc.queue.is_empty:
+        await interaction.response.send_message(f"Escuchando: {vc.current.title} - {vc.current.author}")
+
+@bot.slash_command(guild_ids=[])
+async def clear_list(interaction: nextcord.Interaction):
+    vc: wavelink.Player = interaction.guild.voice_client
+
+    if not vc.queue.is_empty:
+        await vc.queue.clear()
+        await interaction.response.send_message(f"Lista de reproducción eliminada")
+    else:
+        await interaction.response.send_message(f"No hay canciones en la lista de reproducción")
+
+@bot.slash_command(guild_ids=[])
+async def song(interaction: nextcord.Interaction):
+    vc: wavelink.Player = interaction.guild.voice_client
+
+    if vc.is_playing():
+        await interaction.response.send_message(f"Escuchando: {vc.current.title} - {vc.current.author}")
+    else:
+        await interaction.response.send_message("No hay ninguna cancion reproduciendose")
 
 @bot.slash_command(guild_ids=[])
 async def pause(interaction: nextcord.Interaction):
