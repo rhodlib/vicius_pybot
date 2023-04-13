@@ -1,16 +1,19 @@
 import nextcord
 import os
+import re
 from dotenv import load_dotenv
 from nextcord.ext import commands
 from nextcord.shard import EventItem
 import wavelinkcord as wavelink
 
-load_dotenv()
+load_dotenv()   
 TOKEN = os.getenv("BOT_TOKEN")
 
 intents = nextcord.Intents.all()
 client = nextcord.Client()
 bot = commands.Bot(command_prefix="!", intents=intents)
+
+URL_REGEX = re.compile(r"(?i)\b((?:https?://|www\d{0,3}[.]|[a-z0-9.\-]+[.][a-z]{2,4}/)+(?:[^\s()<>]+|\(([^\s()<>]+|(\([^\s()<>]+\)))*\))+(?:\(([^\s()<>]+|(\([^\s()<>]+\)))*\)|[^\s`!()\[\]{};:'\".,<>?«»“”‘’]))")
 
 @bot.event
 async def on_ready():
@@ -18,13 +21,20 @@ async def on_ready():
     bot.loop.create_task(on_node())
 
 async def on_node():
-    node: wavelink.Node = wavelink.Node(uri="http://lavalink.clxud.pro:2333", password="youshallnotpass")
+    node: wavelink.Node = wavelink.Node(uri=os.getenv("LAVALINK_URI"), password=os.getenv("LAVALINK_PASS"))
     await wavelink.NodePool.connect(client=bot, nodes=[node])
     wavelink.Player.autoplay = True
 
 @bot.slash_command(guild_ids=[])
 async def play(interaction: nextcord.Interaction, search):
-    query = await wavelink.YouTubeMusicTrack.search(search, return_first=True)
+    if not URL_REGEX.match(search):
+        search = f'ytsearch: {search}'
+    query = await wavelink.NodePool.get_node().get_tracks(wavelink.YouTubeTrack, search)
+
+    if not query:
+        return await interaction.response.send_message("No se encontro ninguna cancion")
+
+    query = query[0]  
     destination = interaction.user.voice.channel
 
     if not interaction.guild.voice_client:
@@ -37,15 +47,15 @@ async def play(interaction: nextcord.Interaction, search):
         await interaction.response.send_message(f"Escuchando: {vc.current.title} - {vc.current.author}")
     else:
         await vc.queue.put_wait(query)
-        await interaction.response.send_message(f"Escuchando: {vc.current.title} - {vc.current.author}")
+        await interaction.response.send_message(f"Se agrego a la lista: {query.title} - {query.author}")
 
 @bot.slash_command(guild_ids=[])
 async def skip(interaction: nextcord.Interaction):
     vc: wavelink.Player = interaction.guild.voice_client
     await vc.stop()
 
-    if not vc.queue.is_empty:
-        await interaction.response.send_message(f"Escuchando: {vc.current.title} - {vc.current.author}")
+    if vc.queue.is_empty:
+        await interaction.response.send_message(f"Se termino la playlist")
 
 @bot.slash_command(guild_ids=[])
 async def clear_list(interaction: nextcord.Interaction):
@@ -83,7 +93,7 @@ async def resume(interaction: nextcord.Interaction):
     if vc.is_playing():
         await interaction.response.send_message(f"La cancion se esta escuchando")
     else:
-        await vc.pause()
+        await vc.resume()
         await interaction.response.send_message(f"La cancion se reanudo")
 
 @bot.slash_command(guild_ids=[])
@@ -104,7 +114,7 @@ async def queue(interaction: nextcord.Interaction):
 
         for song in queue:
             song_counter += 1
-            songs.appen(song)
+            songs.append(song)
             embed.add_field(name=f"[{song_counter}] Duration {song.duration}", value=f"{song.title}", inline=False)
 
         await interaction.response.send_message(embed=embed)
